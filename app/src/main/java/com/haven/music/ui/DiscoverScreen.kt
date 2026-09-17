@@ -57,13 +57,25 @@ fun DiscoverScreen(
     onOnlineTrackClick: (OnlineTrack) -> Unit,
     onMixClick: (MusicMix) -> Unit,
     onSongClick: (Song) -> Unit,
-    onRefresh: () -> Unit
+    onRefresh: () -> Unit,
+    shouldRequestFocus: Boolean = false,
+    onFocusHandled: () -> Unit = {}
 ) {
     val greeting = getPersonalityGreeting(currentSong?.artist, viewModel)
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     val insights by viewModel.deepInsights.collectAsState()
     val localSearchResults by viewModel.searchResults.collectAsState()
+
+    // Focus Logic for Search Trigger
+    LaunchedEffect(shouldRequestFocus) {
+        if (shouldRequestFocus) {
+            focusRequester.requestFocus()
+            delay(100) // Ensure layout is ready
+            keyboardController?.show()
+            onFocusHandled()
+        }
+    }
 
     // Sync insights with current song
     LaunchedEffect(currentSong) {

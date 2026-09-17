@@ -232,6 +232,7 @@ class MainActivity : ComponentActivity() {
             var showSongSelection by remember { mutableStateOf(false) }
             var showSongSelectionForQueue by remember { mutableStateOf(false) }
             var scrollProgress by remember { mutableStateOf(0f) }
+            var shouldRequestSearchFocus by remember { mutableStateOf(false) }
 
             // Scroll to hide logic
             var isHubVisible by remember { mutableStateOf(true) }
@@ -430,6 +431,7 @@ class MainActivity : ComponentActivity() {
                                                 },
                                                 onRefreshMixes = { viewModel.loadSongs() },
                                                 onSearchIconClick = { 
+                                                    shouldRequestSearchFocus = true
                                                     scope.launch { pagerState.animateScrollToPage(2) }
                                                 },
                                                 onReturnToPlayer = {
@@ -516,7 +518,9 @@ class MainActivity : ComponentActivity() {
                                                     viewModel.playSong(context, it)
                                                     scope.launch { pagerState.animateScrollToPage(1) }
                                                 },
-                                                onRefresh = { viewModel.loadSongs() }
+                                                onRefresh = { viewModel.loadSongs() },
+                                                shouldRequestFocus = shouldRequestSearchFocus,
+                                                onFocusHandled = { shouldRequestSearchFocus = false }
                                             )
                                         }
                                     }
@@ -554,6 +558,7 @@ class MainActivity : ComponentActivity() {
                                         },
                                         onSearchClick = { 
                                             keyboardController?.hide()
+                                            shouldRequestSearchFocus = true
                                             scope.launch { pagerState.animateScrollToPage(2) }
                                         }
                                     )
