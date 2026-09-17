@@ -1,0 +1,24 @@
+# Cherie Music: Signature Edition Task List
+
+- `[/]` **Step 1: Branding & Identity**
+    - `[ ]` Create `ic_launcher_foreground.xml` (Pink Unicorn/Guitar).
+    - `[ ]` Update `libs.versions.toml` for Google Fonts/Montserrat.
+- `[ ]` **Step 2: Premium Audio Engine**
+    - `[ ]` Update `MusicService.kt` with Bass Boost, Loudness Enhancer, and Virtualizer.
+- `[ ]` **Step 3: State & Logic Evolution**
+    - `[ ]` Update `MainViewModel.kt`:
+        - Progress tracking logic.
+        - Audio effect states.
+        - Theme mode state (Glassmorphic, Dark, Light).
+        - Suggestion engine.
+- `[ ]` **Step 4: Theming & Typography**
+    - `[ ]` Update `CherieTheme.kt` with Montserrat and theme modes.
+- `[ ]` **Step 5: UI Screens**
+    - `[ ]` Create `HomeScreen.kt` (Bento layout, Mini-player).
+    - `[ ]` Create `SettingsScreen.kt` (Theme & Audio controls).
+    - `[ ]` Update `NowPlayingScreen.kt` (Slider, Functional Buttons).
+    - `[ ]` Update `MainActivity.kt` (Bottom Navigation, PJ Haven Branding).
+- `[ ]` **Step 6: Verification**
+    - `[ ]` Test Audio Effects.
+    - `[ ]` Verify Theme Switching.
+    - `[ ]` Check Icon and Typography.

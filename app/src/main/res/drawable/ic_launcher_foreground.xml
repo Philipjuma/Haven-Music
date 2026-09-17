@@ -1,0 +1,34 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Clean Orange Double Music Note -->
+    <!-- Note Heads -->
+    <path
+        android:fillColor="#FF9800"
+        android:pathData="M32,72 C32,65 38,59 45,59 C52,59 58,65 58,72 C58,79 52,85 45,85 C38,85 32,79 32,72 Z" />
+    <path
+        android:fillColor="#FF9800"
+        android:pathData="M65,65 C65,58 71,52 78,52 C85,52 91,58 91,65 C91,72 85,78 78,78 C71,78 65,72 65,65 Z" />
+
+    <!-- Stems -->
+    <path
+        android:fillColor="#FF9800"
+        android:pathData="M53,72 L53,30 L58,30 L58,72 Z" />
+    <path
+        android:fillColor="#FF9800"
+        android:pathData="M86,65 L86,23 L91,23 L91,65 Z" />
+
+    <!-- Connecting Flag (Beam) -->
+    <path
+        android:fillColor="#FF9800"
+        android:pathData="M53,30 L91,23 L91,33 L53,40 Z" />
+
+    <!-- Subtle inner highlight for a premium look -->
+    <path
+        android:fillColor="#22FFFFFF"
+        android:pathData="M53,30 L91,23 L91,26 L53,33 Z" />
+
+</vector>
