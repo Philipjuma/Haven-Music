@@ -145,7 +145,7 @@ fun MusicListScreen(
                     modifier = Modifier
                         .tactilePress(onClick = onSearchIconClick)
                         .size(44.dp)
-                        .background(Color(0xFF4CAF50).copy(alpha = glowAlpha), CircleShape)
+                        .background(Color(0xFF4CAF50).copy(alpha = glowAlpha), CircleShape) // Green glow
                         .border(BorderStroke(1.dp, Color(0xFF4CAF50).copy(alpha = 0.2f)), CircleShape)
                 ) {
                     Icon(

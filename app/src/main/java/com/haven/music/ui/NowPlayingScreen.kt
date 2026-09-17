@@ -652,9 +652,9 @@ fun MechanicalProgressSystem(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth(fraction)
-                                .height(6.dp) // Liquid is thinner than the container
-                                .padding(horizontal = 4.dp) // Gap from edges
-                                .background(orangeLiquid, RoundedCornerShape(3.dp))
+                                .height(4.dp) // Even thinner liquid
+                                .padding(horizontal = 6.dp) // More gap from edges
+                                .background(orangeLiquid, CircleShape)
                         )
                     }
                 },
