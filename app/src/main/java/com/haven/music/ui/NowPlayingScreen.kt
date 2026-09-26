@@ -490,11 +490,11 @@ fun PlayerContent(
         }
 
         if (song != null) {
-            Spacer(modifier = Modifier.height(12.dp)) 
-            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Spacer(modifier = Modifier.height(14.dp)) 
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(text = "PLAY ON:", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Black, letterSpacing = 2.sp, fontSize = 10.sp), color = Color(0xFFFF9800).copy(alpha = 0.7f))
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     val query = "${song.title} ${song.artist}"
                     ExternalAppButton(modifier = Modifier.weight(1f), name = "Spotify", color = Color(0xFF1DB954), onClick = { openExternalApp(context, query, "Spotify") })
                     ExternalAppButton(modifier = Modifier.weight(1f), name = "Apple Music", color = Color(0xFFFA243C), onClick = { openExternalApp(context, query, "Apple Music") })

@@ -1249,10 +1249,10 @@ fun ExternalAppButton(
 ) {
     Box(
         modifier = modifier
-            .height(36.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(color.copy(alpha = 0.15f), RoundedCornerShape(10.dp))
-            .border(BorderStroke(1.dp, color.copy(alpha = 0.3f)), RoundedCornerShape(10.dp))
+            .height(44.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(color.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+            .border(BorderStroke(1.dp, color.copy(alpha = 0.3f)), RoundedCornerShape(12.dp))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
