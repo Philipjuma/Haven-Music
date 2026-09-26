@@ -163,7 +163,9 @@ class MusicBrainzProvider : OnlineMusicProvider {
 
     suspend fun fetchArtistDetails(artistName: String): JSONObject? = withContext(Dispatchers.IO) {
         try {
-            val encodedArtist = URLEncoder.encode(artistName, "UTF-8")
+            // Strict artist matching using Lucene syntax
+            val strictQuery = "artist:\"$artistName\""
+            val encodedArtist = URLEncoder.encode(strictQuery, "UTF-8")
             val url = URL("https://musicbrainz.org/ws/2/artist?query=$encodedArtist&limit=1&fmt=json")
             
             val connection = url.openConnection() as HttpURLConnection
@@ -173,7 +175,12 @@ class MusicBrainzProvider : OnlineMusicProvider {
             val response = connection.inputStream.bufferedReader().use { it.readText() }
             val json = JSONObject(response)
             val artists = json.getJSONArray("artists")
-            if (artists.length() > 0) artists.getJSONObject(0) else null
+            if (artists.length() > 0) {
+                val artist = artists.getJSONObject(0)
+                // Strict check: Ensure the name actually matches exactly (ignoring case)
+                val foundName = artist.optString("name", "")
+                if (foundName.equals(artistName, ignoreCase = true)) artist else null
+            } else null
         } catch (e: Exception) {
             null
         }
@@ -181,9 +188,9 @@ class MusicBrainzProvider : OnlineMusicProvider {
 
     suspend fun fetchRecordingDetails(title: String, artist: String): JSONObject? = withContext(Dispatchers.IO) {
         try {
-            val query = "recording:\"$title\" AND artist:\"$artist\""
-            val encodedQuery = URLEncoder.encode(query, "UTF-8")
-            // Include 'recording-level-rels' to get producer info
+            // Strict recording and artist matching
+            val strictQuery = "recording:\"$title\" AND artist:\"$artist\""
+            val encodedQuery = URLEncoder.encode(strictQuery, "UTF-8")
             val url = URL("https://musicbrainz.org/ws/2/recording?query=$encodedQuery&limit=1&fmt=json")
             
             val connection = url.openConnection() as HttpURLConnection

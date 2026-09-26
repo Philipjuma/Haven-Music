@@ -59,6 +59,14 @@ class PJHavenAudioProcessor : BaseAudioProcessor() {
         if (nativeHandle != 0L) nativeSetAuraIntensity(nativeHandle, strength)
     }
 
+    fun setSpaceIntensity(strength: Float) {
+        if (nativeHandle != 0L) nativeSetSpaceIntensity(nativeHandle, strength)
+    }
+
+    fun setEQBand(band: Int, gainDb: Float) {
+        if (nativeHandle != 0L) nativeSetEQBand(nativeHandle, band, gainDb)
+    }
+
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         Log.d("PJHavenDSP", "onConfigure: rate=${inputAudioFormat.sampleRate}, channels=${inputAudioFormat.channelCount}, encoding=${inputAudioFormat.encoding}, enabled=$isPjHavenEnabled, xfade=$crossfadeDuration")
         
@@ -140,6 +148,8 @@ class PJHavenAudioProcessor : BaseAudioProcessor() {
     private external fun nativeSetPunchIntensity(handle: Long, intensity: Float)
     private external fun nativeSetImmerseIntensity(handle: Long, intensity: Float)
     private external fun nativeSetAuraIntensity(handle: Long, intensity: Float)
+    private external fun nativeSetSpaceIntensity(handle: Long, intensity: Float)
+    private external fun nativeSetEQBand(handle: Long, band: Int, gainDb: Float)
     private external fun nativeProcess(
         handle: Long, 
         input: ByteBuffer, 

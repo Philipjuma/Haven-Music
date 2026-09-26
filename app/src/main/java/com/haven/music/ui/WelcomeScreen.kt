@@ -164,13 +164,13 @@ fun WelcomeScreen(
                             
                             FloatingActionButton(
                                 onClick = { 
-                                    scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
+                                    scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1, animationSpec = PremiumSpring) }
                                 },
                                 containerColor = currentSlide.accentColor,
                                 contentColor = Color.White,
                                 shape = CircleShape,
                                 modifier = Modifier.size(56.dp).tactilePress(onClick = { 
-                                    scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
+                                    scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1, animationSpec = PremiumSpring) }
                                 })
                             ) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Next")

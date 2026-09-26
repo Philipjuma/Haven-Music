@@ -20,7 +20,7 @@ class PlaybackPersistenceManager(context: Context) {
     }
 
     fun getSavedLibrarySection(): String = prefs.getString("last_library_section", "Songs") ?: "Songs"
-    fun getSavedAudioEngine(): String = prefs.getString("audio_engine", "Media3") ?: "Media3"
+    fun getSavedAudioEngine(): String = prefs.getString("audio_engine", "PJ_Haven_2_0") ?: "PJ_Haven_2_0"
 
     fun getSavedSongId(): Long = prefs.getLong("last_song_id", -1L)
     fun getSavedPosition(): Long = prefs.getLong("last_position", 0L)

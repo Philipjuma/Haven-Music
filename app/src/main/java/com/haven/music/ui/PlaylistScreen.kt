@@ -41,73 +41,71 @@ fun PlaylistScreen(
         modifier = Modifier.fillMaxSize(),
         color = Color(0xFF121212)
     ) {
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
+                .statusBarsPadding(),
+            contentPadding = PaddingValues(bottom = 180.dp)
         ) {
-            // Header
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onBack, modifier = Modifier.tactilePress(onClick = onBack)) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
-                    }
-                    Text(
-                        text = havenTransform("Playlist"),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = Color.White.copy(alpha = 0.6f),
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
-                }
-
-                Box {
-                    IconButton(onClick = { showMenu = true }, modifier = Modifier.tactilePress(onClick = { showMenu = true })) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "Options", tint = Color.White)
-                    }
-                    DropdownMenu(
-                        expanded = showMenu,
-                        onDismissRequest = { showMenu = false }
+            // 1. Navigation Bar & Hero Section
+            item {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        DropdownMenuItem(
-                            text = { Text("Add Songs") },
-                            onClick = { 
-                                showMenu = false
-                                onAddSongs()
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = onBack, modifier = Modifier.tactilePress(onClick = onBack)) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
                             }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Rename") },
-                            onClick = { 
-                                showMenu = false
-                                showRenameDialog = true
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Delete Playlist", color = MaterialTheme.colorScheme.error) },
-                            onClick = { 
-                                showMenu = false
-                                showDeleteConfirm = true
-                            }
-                        )
-                    }
-                }
-            }
+                            Text(
+                                text = havenTransform("Playlist"),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = Color.White.copy(alpha = 0.6f),
+                                modifier = Modifier.padding(start = 8.dp)
+                            )
+                        }
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp)
-            ) {
-                item {
+                        Box {
+                            IconButton(onClick = { showMenu = true }, modifier = Modifier.tactilePress(onClick = { showMenu = true })) {
+                                Icon(Icons.Default.MoreVert, contentDescription = "Options", tint = Color.White)
+                            }
+                            DropdownMenu(
+                                expanded = showMenu,
+                                onDismissRequest = { showMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Add Songs") },
+                                    onClick = { 
+                                        showMenu = false
+                                        onAddSongs()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Rename") },
+                                    onClick = { 
+                                        showMenu = false
+                                        showRenameDialog = true
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Delete Playlist", color = MaterialTheme.colorScheme.error) },
+                                    onClick = { 
+                                        showMenu = false
+                                        showDeleteConfirm = true
+                                    }
+                                )
+                            }
+                        }
+                    }
+
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = 32.dp)
+                            .padding(horizontal = 24.dp, vertical = 16.dp)
                     ) {
                         Text(
                             text = havenTransform(playlist.name),
@@ -122,8 +120,11 @@ fun PlaylistScreen(
                         )
                     }
                 }
+            }
 
-                itemsIndexed(playlistSongs, key = { _, s -> s.id }) { index, song ->
+            // 2. Songs List
+            itemsIndexed(playlistSongs, key = { _, s -> s.id }) { index, song ->
+                Box(modifier = Modifier.padding(horizontal = 12.dp)) {
                     SongItem(
                         index = index + 1,
                         song = song,
@@ -136,12 +137,8 @@ fun PlaylistScreen(
                         onToggleFavorite = { /* Long press menu handles this */ },
                         onLongClick = { onSongLongClick(song) }
                     )
-                    Spacer(modifier = Modifier.height(10.dp))
                 }
-
-                item {
-                    Spacer(modifier = Modifier.height(140.dp))
-                }
+                Spacer(modifier = Modifier.height(10.dp))
             }
         }
     }

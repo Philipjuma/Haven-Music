@@ -117,8 +117,10 @@ class MusicService : MediaSessionService() {
         val sessionActivityPendingIntent = PendingIntent.getActivity(
             this,
             0,
-            Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE
+            Intent(this, MainActivity::class.java).apply {
+                action = "OPEN_PLAYER"
+            },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
         mediaSession = MediaSession.Builder(this, player)
@@ -172,6 +174,7 @@ class MusicService : MediaSessionService() {
                             val index = args.getInt("index")
                             val level = args.getInt("level")
                             equalizerManager.setBandLevel(index.toShort(), level.toShort())
+                            pjSoundManager.setEQBand(index, level.toFloat())
                             return com.google.common.util.concurrent.Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                         }
                         "SET_EQ_PRE_GAIN" -> {
@@ -194,6 +197,7 @@ class MusicService : MediaSessionService() {
                         "SET_REVERB_PRESET" -> {
                             val preset = args.getInt("preset")
                             equalizerManager.setReverbPreset(preset.toShort())
+                            pjSoundManager.setSpaceIntensity(preset)
                             return com.google.common.util.concurrent.Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                         }
                         "SET_AMBIENCE" -> {
@@ -231,7 +235,11 @@ class MusicService : MediaSessionService() {
                             equalizerManager.syncSettings(enabled, bandsMap, strength.toShort(), virt.toShort(), reverb.toShort())
                             pjSoundManager.setPunchIntensity(strength)
                             pjSoundManager.setImmerseIntensity(virt)
+                            pjSoundManager.setSpaceIntensity(reverb)
                             pjSoundManager.setAuraIntensity(aura)
+                            bandsMap.forEach { (index, level) ->
+                                pjSoundManager.setEQBand(index.toInt(), level.toFloat())
+                            }
                             return com.google.common.util.concurrent.Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                         }
                     }

@@ -1,6 +1,7 @@
 package com.haven.music.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -19,12 +20,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.haven.music.LibrarySection
+import com.haven.music.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,6 +58,8 @@ fun SettingsScreen(
     onToggleResumeOnHeadset: (Boolean) -> Unit,
     audioSafeEnabled: Boolean,
     onToggleAudioSafe: (Boolean) -> Unit,
+    adaptiveControlsEnabled: Boolean,
+    onToggleAdaptiveControls: (Boolean) -> Unit,
     onClearCacheClick: () -> Unit,
     onEngineSelected: (com.haven.music.AudioEngine) -> Unit,
     onAppEqualizerClick: () -> Unit
@@ -67,13 +74,32 @@ fun SettingsScreen(
         Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
             // Header
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onBack) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
                 }
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.width(12.dp))
+                
+                // App Icon Container
+                Surface(
+                    modifier = Modifier.size(44.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color.Black,
+                    border = BorderStroke(1.5.dp, Color(0xFFFF9800).copy(alpha = 0.6f))
+                ) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        AsyncImage(
+                            model = R.mipmap.ic_launcher_round,
+                            contentDescription = "Haven App Icon",
+                            modifier = Modifier.size(36.dp).clip(CircleShape)
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.width(12.dp))
+                
                 Column {
                     Text(
                         text = "HAVEN MUSIC",
@@ -123,6 +149,19 @@ fun SettingsScreen(
                             },
                             subtitleColor = Color(0xFFFF9800),
                             onClick = { showEngineSelection = true }
+                        )
+                        SettingsRow(
+                            icon = Icons.Default.Palette,
+                            title = "Adaptive Player Buttons",
+                            subtitle = "Controls match current album art",
+                            trailing = {
+                                Switch(
+                                    checked = adaptiveControlsEnabled,
+                                    onCheckedChange = onToggleAdaptiveControls,
+                                    colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFFFF9800), checkedTrackColor = Color(0xFFFF9800).copy(alpha = 0.4f))
+                                )
+                            },
+                            onClick = { onToggleAdaptiveControls(!adaptiveControlsEnabled) }
                         )
                         SettingsRow(
                             icon = Icons.Default.GppGood,
@@ -330,9 +369,9 @@ fun SettingsScreen(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Icon(Icons.Default.MusicNote, contentDescription = null, tint = Color(0xFFFF9800).copy(alpha = 0.2f), modifier = Modifier.size(24.dp))
-                        Text(havenTransform("Haven Music"), style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.2f))
-                        Text(havenTransform("PJ10 Industries"), style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.1f))
+                        Icon(Icons.Default.MusicNote, contentDescription = null, tint = Color(0xFFFF9800).copy(alpha = 0.6f), modifier = Modifier.size(24.dp))
+                        Text(havenTransform("Haven Music"), style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
+                        Text(havenTransform("PJ10 Industries"), style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.3f))
                     }
                 }
             }

@@ -43,6 +43,14 @@ class PJSoundManager(private val audioProcessor: PJHavenAudioProcessor) {
         audioProcessor.setAuraIntensity(strength.toFloat())
     }
 
+    fun setSpaceIntensity(strength: Int) {
+        audioProcessor.setSpaceIntensity(strength.toFloat())
+    }
+
+    fun setEQBand(band: Int, gainDb: Float) {
+        audioProcessor.setEQBand(band, gainDb)
+    }
+
     private fun applyEngine(engine: AudioEngine) {
         val isEnabled = engine == AudioEngine.PJ_Haven_2_0
         Log.d("PJHavenDSP", "applyEngine: $engine, enabled=$isEnabled")

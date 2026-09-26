@@ -1,6 +1,7 @@
 package com.haven.music
 
 import android.Manifest
+import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.Context.AUDIO_SERVICE
 import android.content.Intent
@@ -24,7 +25,9 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -42,9 +45,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.compositeOver
@@ -83,8 +88,46 @@ import kotlin.math.absoluteValue
 import kotlin.random.Random
 
 class MainActivity : ComponentActivity() {
+    private val _intentFlow = MutableStateFlow<Intent?>(null)
+    private val viewModel: MainViewModel by lazy {
+        androidx.lifecycle.ViewModelProvider(this, MainViewModelFactory(MusicRepository(applicationContext)))[MainViewModel::class.java]
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        _intentFlow.value = intent
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Always scan for local music on return to capture new device files
+        viewModel.loadSongs()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        viewModel.persistCurrentState()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        viewModel.persistCurrentState()
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        viewModel.trimMemory(level)
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        viewModel.trimMemory(ComponentCallbacks2.TRIM_MEMORY_COMPLETE)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        _intentFlow.value = intent
         
         // Request High Refresh Rate (90Hz/120Hz)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -118,10 +161,8 @@ class MainActivity : ComponentActivity() {
             val context = LocalContext.current
             val haptic = LocalHapticFeedback.current
             val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
-            val repository = remember { MusicRepository(context) }
-            val viewModel: MainViewModel = viewModel(
-                factory = MainViewModelFactory(repository)
-            )
+            val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+            val viewModel: MainViewModel = this.viewModel
 
             val speechLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.StartActivityForResult()
@@ -178,6 +219,7 @@ class MainActivity : ComponentActivity() {
             val onlineSearchError by viewModel.onlineSearchError.collectAsState()
             
             val audioSafeEnabled by viewModel.audioSafeEnabled
+            val adaptiveControlsEnabled by viewModel.adaptiveControlsEnabled
             val showAudioSafeWarning by viewModel.showAudioSafeWarning
             val showWelcomeScreen by viewModel.showWelcomeScreen
 
@@ -203,6 +245,14 @@ class MainActivity : ComponentActivity() {
                 pageCount = { 3 }
             )
             val scope = rememberCoroutineScope()
+
+            // Handle incoming intents for notification taps
+            val incomingIntent by _intentFlow.collectAsState()
+            LaunchedEffect(incomingIntent) {
+                if (incomingIntent?.action == "OPEN_PLAYER") {
+                    pagerState.scrollToPage(1)
+                }
+            }
             
             // Hoisted List State for Cross-Room interaction
             val libraryListState = rememberLazyListState()
@@ -233,6 +283,8 @@ class MainActivity : ComponentActivity() {
             var showSongSelectionForQueue by remember { mutableStateOf(false) }
             var scrollProgress by remember { mutableStateOf(0f) }
             var shouldRequestSearchFocus by remember { mutableStateOf(false) }
+
+            var selectedOnlineTrackForMenu by remember { mutableStateOf<OnlineTrack?>(null) }
 
             // Scroll to hide logic
             var isHubVisible by remember { mutableStateOf(true) }
@@ -273,11 +325,6 @@ class MainActivity : ComponentActivity() {
                 }
             }
             
-            // Optimized Visibility Check
-            val isMiniPlayerVisible by remember {
-                derivedStateOf { isNavExpanded && pagerState.currentPage != 1 && currentSong != null }
-            }
-            
             var hasPermission by remember {
                 mutableStateOf(
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -298,6 +345,7 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(hasPermission) {
                 if (hasPermission) {
                     viewModel.loadSongs()
+                    @androidx.media3.common.util.UnstableApi
                     viewModel.initController(context)
                 } else {
                     val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -314,6 +362,7 @@ class MainActivity : ComponentActivity() {
             
             BackHandler(enabled = youtubeVideoId != null || showEqualizer || showSongSelectionForQueue || showSettings || showSearchOverlay || showSongSelection || selectedSongForMenu != null || selectedSongForPlaylist != null || playlistTargetForAdd != null || selectedArtistName != null || selectedAlbumName != null || selectedPlaylist != null || selectedMix != null || selectedAlbumForMenu != null || selectedArtistForMenu != null || pagerState.currentPage != 1) {
                 keyboardController?.hide()
+                focusManager.clearFocus()
                 
                 if (youtubeVideoId != null) viewModel.closeYouTubePlayer()
                 else if (showEqualizer) showEqualizer = false
@@ -330,7 +379,7 @@ class MainActivity : ComponentActivity() {
                 else if (selectedMix != null) selectedMix = null
                 else if (selectedArtistName != null) selectedArtistName = null
                 else if (selectedAlbumName != null) selectedAlbumName = null
-                else scope.launch { pagerState.animateScrollToPage(1) }
+                else scope.launch { pagerState.animateScrollToPage(1, animationSpec = PremiumSpring) }
             }
 
             // Atmosphere Animations
@@ -349,12 +398,23 @@ class MainActivity : ComponentActivity() {
             
             val desaturateMatrix = remember { ColorMatrix() }
 
+            // Global Keyboard Dismissal on Room Change
+            LaunchedEffect(pagerState.currentPage) {
+                keyboardController?.hide()
+            }
+
             HavenTheme(dominantColor = dominantColor) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(Color.Black)
                         .graphicsLayer { this.alpha = 1f }
+                        .pointerInput(Unit) {
+                            detectTapGestures(onTap = {
+                                keyboardController?.hide() // Hide keyboard when tapping background
+                                focusManager.clearFocus()
+                            })
+                        }
                 ) {
                     if (currentSong != null) {
                         AsyncImage(
@@ -379,26 +439,30 @@ class MainActivity : ComponentActivity() {
 
                     Surface(modifier = Modifier.fillMaxSize(), color = Color.Transparent) {
                         Box(modifier = Modifier.fillMaxSize()) {
-                            // PREMIUM ROOM TRANSITION (Pager with Fade/Scale effects)
+                            // PREMIUM ROOM TRANSITION (Pager with Depth Parallax & Elastic Scaling)
                             HorizontalPager(
                                 state = pagerState,
-                                modifier = Modifier.fillMaxSize(),
-                                beyondViewportPageCount = 2, // Keep all rooms physically ready
+                                modifier = Modifier.fillMaxSize().clipToBounds(),
+                                beyondViewportPageCount = 1, 
                                 pageSpacing = 0.dp,
-                                userScrollEnabled = true // Universal native gestures enabled
+                                userScrollEnabled = true
                             ) { page ->
-                                // Custom Fade + Scale Transition
-                                val pageOffset = ((pagerState.currentPage - page) + pagerState.currentPageOffsetFraction).absoluteValue
-                                val pageAlpha = (1f - pageOffset).coerceIn(0f, 1f)
-                                val pageScale = 0.97f + (0.03f * (1f - pageOffset))
-
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
+                                        .clipToBounds()
                                         .graphicsLayer {
-                                            alpha = pageAlpha
-                                            scaleX = pageScale
-                                            scaleY = pageScale
+                                            // 120Hz GPU RenderNode-Accelerated 3D See-Saw Pivot Transition
+                                            val pageOffset = ((pagerState.currentPage - page) + pagerState.currentPageOffsetFraction)
+                                            val absOffset = pageOffset.absoluteValue
+                                            val easedProgress = FastOutSlowInEasing.transform(absOffset.coerceIn(0f, 1f))
+                                            
+                                            alpha = (1f - (easedProgress * 0.35f)).coerceIn(0f, 1f)
+                                            scaleX = 0.96f + (0.04f * (1f - easedProgress))
+                                            scaleY = 0.96f + (0.04f * (1f - easedProgress))
+                                            rotationY = pageOffset * -10f
+                                            transformOrigin = TransformOrigin(if (pageOffset > 0) 0f else 1f, 0.5f)
+                                            clip = true
                                         }
                                 ) {
                                     when (page) {
@@ -422,20 +486,22 @@ class MainActivity : ComponentActivity() {
                                                 onMoveSection = { from, to -> viewModel.moveLibrarySection(from, to) },
                                                 onSongClick = { 
                                                     viewModel.playSong(context, it)
-                                                    scope.launch { pagerState.animateScrollToPage(1) }
+                                                    scope.launch { pagerState.animateScrollToPage(1, animationSpec = PremiumSpring) }
                                                 },
                                                 onSongLongClick = { selectedSongForMenu = it },
                                                 onToggleFavorite = { viewModel.toggleFavorite(it) },
                                                 onMixClick = { mix ->
                                                     selectedMix = mix
                                                 },
-                                                onRefreshMixes = { viewModel.loadSongs() },
+                                                onRefreshMixes = { 
+                                                    viewModel.loadSongs()
+                                                    if (onlineSearchQuery.isNotBlank()) viewModel.searchOnline(onlineSearchQuery)
+                                                },
                                                 onSearchIconClick = { 
-                                                    shouldRequestSearchFocus = true
-                                                    scope.launch { pagerState.animateScrollToPage(2) }
+                                                    showSearchOverlay = true
                                                 },
                                                 onReturnToPlayer = {
-                                                    scope.launch { pagerState.animateScrollToPage(1) }
+                                                    scope.launch { pagerState.animateScrollToPage(1, animationSpec = PremiumSpring) }
                                                 },
                                                 isHubVisible = isHubVisible,
                                                 onHubVisibilityChange = { isHubVisible = it },
@@ -446,7 +512,7 @@ class MainActivity : ComponentActivity() {
                                                 onPlaylistClick = { selectedPlaylist = it },
                                                 onNoResult = { letter ->
                                                     viewModel.searchOnline(letter.toString())
-                                                    scope.launch { pagerState.animateScrollToPage(2) }
+                                                    scope.launch { pagerState.animateScrollToPage(2, animationSpec = PremiumSpring) }
                                                 },
                                                 listState = libraryListState
                                             )
@@ -477,20 +543,20 @@ class MainActivity : ComponentActivity() {
                                                 onAddFolderClick = { folderPickerLauncher.launch(null) },
                                                 onGoToArtist = {
                                                     selectedArtistName = it
-                                                    scope.launch { pagerState.animateScrollToPage(1) }
+                                                    scope.launch { pagerState.animateScrollToPage(1, animationSpec = PremiumSpring) }
                                                 },
                                                 onGoToAlbum = {
                                                     selectedAlbumName = it
-                                                    scope.launch { pagerState.animateScrollToPage(1) }
+                                                    scope.launch { pagerState.animateScrollToPage(1, animationSpec = PremiumSpring) }
                                                 },
                                                 musicFolders = musicFolders,
-                                                onBack = { scope.launch { pagerState.animateScrollToPage(0) } },
+                                                onBack = { scope.launch { pagerState.animateScrollToPage(0, animationSpec = PremiumSpring) } },
                                                 viewModel = viewModel,
                                                 nextSong = queue.firstOrNull(),
                                                 onUpNextClick = { targetSong ->
                                                     viewModel.setLibrarySection(LibrarySection.Songs)
                                                     scope.launch {
-                                                        pagerState.animateScrollToPage(0)
+                                                        pagerState.animateScrollToPage(0, animationSpec = PremiumSpring)
                                                         val songIndex = filteredSongs.indexOfFirst { it.id == targetSong.id }
                                                         if (songIndex != -1) {
                                                             libraryListState.animateScrollToItem(songIndex)
@@ -511,12 +577,16 @@ class MainActivity : ComponentActivity() {
                                                 onOnlineSearch = { viewModel.searchOnline(it) },
                                                 onVoiceClick = { triggerVoiceSearch() },
                                                 onOnlineTrackClick = { viewModel.playOnlineTrack(context, it) },
+                                                onOnlineTrackLongClick = { 
+                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                    selectedOnlineTrackForMenu = it 
+                                                },
                                                 onMixClick = { mix ->
                                                     selectedMix = mix
                                                 },
                                                 onSongClick = { 
                                                     viewModel.playSong(context, it)
-                                                    scope.launch { pagerState.animateScrollToPage(1) }
+                                                    scope.launch { pagerState.animateScrollToPage(1, animationSpec = PremiumSpring) }
                                                 },
                                                 onRefresh = { viewModel.loadSongs() },
                                                 shouldRequestFocus = shouldRequestSearchFocus,
@@ -545,21 +615,22 @@ class MainActivity : ComponentActivity() {
                                             onBitmapLoaded = { viewModel.addToBitmapCache(currentSong!!.id, it) },
                                             onTogglePlayPause = { viewModel.togglePlayPause() },
                                             onNext = { viewModel.skipToNext() },
-                                            onClick = { scope.launch { pagerState.animateScrollToPage(1) } }
+                                            onClick = { scope.launch { pagerState.animateScrollToPage(1, animationSpec = PremiumSpring) } }
                                         )
                                         Spacer(modifier = Modifier.height(12.dp))
                                     }
 
                                     BottomControlHub(
                                         selectedPage = pagerState.currentPage,
+                                        dominantColor = dominantColor,
+                                        adaptiveEnabled = adaptiveControlsEnabled,
                                         onPageSelected = { page ->
-                                            keyboardController?.hide()
-                                            scope.launch { pagerState.animateScrollToPage(page) }
+                                            keyboardController?.hide() // Explicit hide on room change
+                                            focusManager.clearFocus()
+                                            scope.launch { pagerState.animateScrollToPage(page, animationSpec = PremiumSpring) }
                                         },
                                         onSearchClick = { 
-                                            keyboardController?.hide()
-                                            shouldRequestSearchFocus = true
-                                            scope.launch { pagerState.animateScrollToPage(2) }
+                                            showSearchOverlay = true
                                         }
                                     )
                                 }
@@ -631,7 +702,9 @@ class MainActivity : ComponentActivity() {
                                     onEngineSelected = { viewModel.setAudioEngine(it) },
                                     onAppEqualizerClick = { showEqualizer = true },
                                     audioSafeEnabled = audioSafeEnabled,
-                                    onToggleAudioSafe = { viewModel.setAudioSafeEnabled(it) }
+                                    onToggleAudioSafe = { viewModel.setAudioSafeEnabled(it) },
+                                    adaptiveControlsEnabled = viewModel.adaptiveControlsEnabled.value,
+                                    onToggleAdaptiveControls = { viewModel.setAdaptiveControlsEnabled(it) }
                                 )
                             }
 
@@ -718,7 +791,7 @@ class MainActivity : ComponentActivity() {
                                     onSongClick = {
                                         viewModel.playSong(context, it)
                                         showSearchOverlay = false
-                                        scope.launch { pagerState.animateScrollToPage(1) }
+                                        scope.launch { pagerState.animateScrollToPage(1, animationSpec = PremiumSpring) }
                                     },
                                     onExternalSearch = { query, provider -> openExternalSearch(query, provider) },
                                     onBack = { showSearchOverlay = false }
@@ -743,17 +816,17 @@ class MainActivity : ComponentActivity() {
                                         onSongClick = {
                                             viewModel.playSong(context, it)
                                             selectedArtistName = null
-                                            scope.launch { pagerState.animateScrollToPage(1) }
+                                            scope.launch { pagerState.animateScrollToPage(1, animationSpec = PremiumSpring) }
                                         },
                                         onPlayAll = {
                                             viewModel.playSongs(context, it)
                                             selectedArtistName = null
-                                            scope.launch { pagerState.animateScrollToPage(1) }
+                                            scope.launch { pagerState.animateScrollToPage(1, animationSpec = PremiumSpring) }
                                         },
                                         onShuffleAll = {
                                             viewModel.shuffleSongs(context, it)
                                             selectedArtistName = null
-                                            scope.launch { pagerState.animateScrollToPage(1) }
+                                            scope.launch { pagerState.animateScrollToPage(1, animationSpec = PremiumSpring) }
                                         },
                                         onAlbumClick = { selectedAlbumName = it.name }
                                     )
@@ -778,18 +851,18 @@ class MainActivity : ComponentActivity() {
                                         onSongClick = {
                                             viewModel.playSong(context, it)
                                             selectedAlbumName = null
-                                            scope.launch { pagerState.animateScrollToPage(1) }
+                                            scope.launch { pagerState.animateScrollToPage(1, animationSpec = PremiumSpring) }
                                         },
                                         onSongLongClick = { selectedSongForMenu = it },
                                         onPlayAll = {
                                             viewModel.playSongs(context, it)
                                             selectedAlbumName = null
-                                            scope.launch { pagerState.animateScrollToPage(1) }
+                                            scope.launch { pagerState.animateScrollToPage(1, animationSpec = PremiumSpring) }
                                         },
                                         onShuffleAll = {
                                             viewModel.shuffleSongs(context, it)
                                             selectedAlbumName = null
-                                            scope.launch { pagerState.animateScrollToPage(1) }
+                                            scope.launch { pagerState.animateScrollToPage(1, animationSpec = PremiumSpring) }
                                         },
                                         onAddToPlaylist = {
                                             selectedSongsForPlaylist = albumSongs
@@ -817,18 +890,18 @@ class MainActivity : ComponentActivity() {
                                         onSongClick = {
                                             viewModel.playSong(context, it)
                                             selectedMix = null
-                                            scope.launch { pagerState.animateScrollToPage(1) }
+                                            scope.launch { pagerState.animateScrollToPage(1, animationSpec = PremiumSpring) }
                                         },
                                         onSongLongClick = { selectedSongForMenu = it },
                                         onPlayAll = {
                                             viewModel.playSongs(context, it)
                                             selectedMix = null
-                                            scope.launch { pagerState.animateScrollToPage(1) }
+                                            scope.launch { pagerState.animateScrollToPage(1, animationSpec = PremiumSpring) }
                                         },
                                         onShuffleAll = {
                                             viewModel.shuffleSongs(context, it)
                                             selectedMix = null
-                                            scope.launch { pagerState.animateScrollToPage(1) }
+                                            scope.launch { pagerState.animateScrollToPage(1, animationSpec = PremiumSpring) }
                                         }
                                     )
                                 }
@@ -850,7 +923,7 @@ class MainActivity : ComponentActivity() {
                                         onBack = { selectedPlaylist = null },
                                         onSongClick = {
                                             viewModel.playSong(context, it)
-                                            scope.launch { pagerState.animateScrollToPage(1) }
+                                            scope.launch { pagerState.animateScrollToPage(1, animationSpec = PremiumSpring) }
                                         },
                                         onSongLongClick = { selectedSongForMenu = it },
                                         onAddSongs = { playlistTargetForAdd = selectedPlaylist },
@@ -939,52 +1012,36 @@ class MainActivity : ComponentActivity() {
 
                             // Song Action Menu (Long Press)
                             if (selectedSongForMenu != null && selectedSongForPlaylist == null && playlistTargetForAdd == null) {
-                                val inPlaylistId = selectedPlaylist?.id
-                                SongActionMenu(
-                                    song = selectedSongForMenu!!,
-                                    isFavorite = selectedSongForMenu!!.id in favorites,
+                                val song = selectedSongForMenu!!
+                                PremiumActionMenu(
+                                    title = song.title,
+                                    subtitle = song.artist,
+                                    artUri = song.albumArtUri,
+                                    isFavorite = song.id in favorites,
+                                    isOnline = song.isOnline,
+                                    provider = song.provider,
                                     onDismiss = { selectedSongForMenu = null },
                                     onPlay = {
-                                        viewModel.playSong(context, selectedSongForMenu!!)
-                                        scope.launch { pagerState.animateScrollToPage(1) }
-                                    },
-                                    onAddToPlaylist = {
-                                        selectedSongForPlaylist = selectedSongForMenu
-                                        selectedSongForMenu = null
+                                        viewModel.playSong(context, song)
+                                        scope.launch { pagerState.animateScrollToPage(1, animationSpec = PremiumSpring) }
                                     },
                                     onToggleFavorite = {
-                                        viewModel.toggleFavorite(selectedSongForMenu!!.id)
+                                        viewModel.toggleFavorite(song.id)
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                     },
                                     onGoToArtist = {
-                                        selectedArtistName = selectedSongForMenu!!.artist
+                                        selectedArtistName = song.artist
                                         selectedSongForMenu = null
                                     },
                                     onGoToAlbum = {
-                                        selectedAlbumName = selectedSongForMenu!!.album
+                                        selectedAlbumName = song.album
                                         selectedSongForMenu = null
                                     },
-                                    onAddToQueue = {
-                                        viewModel.addSongsToQueue(listOf(selectedSongForMenu!!))
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        Toast.makeText(context, "Added to queue", Toast.LENGTH_SHORT).show()
+                                    onLyricsClick = {
+                                        val query = "${song.title} ${song.artist} lyrics"
+                                        openExternalSearch(query, "Google")
                                         selectedSongForMenu = null
-                                    },
-                                    onPlayNext = {
-                                        viewModel.playNext(selectedSongForMenu!!)
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        Toast.makeText(context, "Playing next", Toast.LENGTH_SHORT).show()
-                                        selectedSongForMenu = null
-                                    },
-                                    onRemoveFromPlaylist = if (inPlaylistId != null) {
-                                        {
-                                            viewModel.removeSongFromPlaylist(selectedSongForMenu!!.id, inPlaylistId)
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            Toast.makeText(context, "Removed from playlist", Toast.LENGTH_SHORT).show()
-                                            selectedPlaylist = viewModel.playlists.value.find { it.id == inPlaylistId }
-                                            selectedSongForMenu = null
-                                        }
-                                    } else null
+                                    }
                                 )
                             }
 
@@ -996,7 +1053,7 @@ class MainActivity : ComponentActivity() {
                                     onOpen = { selectedAlbumName = selectedAlbumForMenu!!.name },
                                     onPlay = {
                                         viewModel.playSongs(context, selectedAlbumForMenu!!.songs)
-                                        scope.launch { pagerState.animateScrollToPage(1) }
+                                        scope.launch { pagerState.animateScrollToPage(1, animationSpec = PremiumSpring) }
                                     },
                                     onAddToQueue = {
                                         viewModel.addSongsToQueue(selectedAlbumForMenu!!.songs)
@@ -1013,7 +1070,7 @@ class MainActivity : ComponentActivity() {
                                     onOpen = { selectedArtistName = selectedArtistForMenu!!.name },
                                     onPlay = {
                                         viewModel.playSongs(context, selectedArtistForMenu!!.songs)
-                                        scope.launch { pagerState.animateScrollToPage(1) }
+                                        scope.launch { pagerState.animateScrollToPage(1, animationSpec = PremiumSpring) }
                                     },
                                     onAddToQueue = {
                                         viewModel.addSongsToQueue(selectedArtistForMenu!!.songs)
@@ -1039,6 +1096,54 @@ class MainActivity : ComponentActivity() {
                                     onDismiss = { showSongSelectionForQueue = false }
                                 )
                             }
+
+                            // Online Track Action Menu
+                            if (selectedOnlineTrackForMenu != null) {
+                                val track = selectedOnlineTrackForMenu!!
+                                val trackLongId = track.id.hashCode().toLong()
+                                val isFav = favorites.contains(trackLongId)
+                                
+                                PremiumActionMenu(
+                                    title = track.title,
+                                    subtitle = track.artist,
+                                    artUri = track.artUrl?.let { Uri.parse(it) },
+                                    isFavorite = isFav,
+                                    isOnline = true,
+                                    provider = track.provider,
+                                    onDismiss = { selectedOnlineTrackForMenu = null },
+                                    onPlay = { 
+                                        viewModel.playOnlineTrack(context, track)
+                                        scope.launch { pagerState.animateScrollToPage(1, animationSpec = PremiumSpring) }
+                                    },
+                                    onToggleFavorite = {
+                                        viewModel.toggleFavorite(trackLongId)
+                                        // Also ensure it's in the lib cache if favorited
+                                        if (!isFav) {
+                                            val dummy = Song(
+                                                id = trackLongId,
+                                                title = track.title,
+                                                artist = track.artist,
+                                                album = track.provider,
+                                                duration = track.duration,
+                                                albumArtUri = track.artUrl?.let { Uri.parse(it) },
+                                                contentUri = Uri.parse(track.streamUrl),
+                                                isOnline = true,
+                                                provider = track.provider
+                                            )
+                                            viewModel.addSongsToLibrary(listOf(dummy))
+                                        }
+                                    },
+                                    onGoToArtist = {
+                                        viewModel.searchOnline(track.artist)
+                                        selectedOnlineTrackForMenu = null
+                                    },
+                                    onLyricsClick = {
+                                        val query = "${track.title} ${track.artist} lyrics"
+                                        openExternalSearch(query, "Google")
+                                        selectedOnlineTrackForMenu = null
+                                    }
+                                )
+                            }
                         }
                     }
 
@@ -1052,7 +1157,7 @@ class MainActivity : ComponentActivity() {
                             onComplete = { 
                                 viewModel.completeOnboarding()
                                 viewModel.setLibrarySection(LibrarySection.Songs)
-                                scope.launch { pagerState.animateScrollToPage(0) }
+                                scope.launch { pagerState.animateScrollToPage(0, animationSpec = PremiumSpring) }
                             }
                         )
                     }
@@ -1091,8 +1196,8 @@ fun GlobalMiniPlayer(
     onNext: () -> Unit,
     onClick: () -> Unit
 ) {
-    val surfaceColor = MaterialTheme.colorScheme.surface
-    val tintedBackground = dominantColor.copy(alpha = 0.25f).compositeOver(surfaceColor.copy(alpha = 0.5f))
+    val activeOrange = Color(0xFFFF9800)
+    val frostedBg = dominantColor.copy(alpha = 0.50f).compositeOver(Color.Black.copy(alpha = 0.70f))
     
     Surface(
         modifier = Modifier
@@ -1101,9 +1206,9 @@ fun GlobalMiniPlayer(
             .height(76.dp)
             .tactilePress(onClick = onClick),
         shape = RoundedCornerShape(24.dp),
-        color = tintedBackground,
-        border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.1f)),
-        shadowElevation = 8.dp
+        color = frostedBg,
+        border = BorderStroke(1.5.dp, activeOrange.copy(alpha = 0.4f)),
+        shadowElevation = 16.dp
     ) {
         Row(
             modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
@@ -1146,89 +1251,17 @@ fun GlobalMiniPlayer(
 }
 
 @Composable
-fun NavigationDock(
-    isExpanded: Boolean,
-    selectedPage: Int,
-    onExpand: () -> Unit,
-    onPageSelected: (Int) -> Unit,
-    onSearchClick: () -> Unit
-) {
-    val surfaceColor = MaterialTheme.colorScheme.surface
-    
-    AnimatedContent(
-        targetState = isExpanded,
-        transitionSpec = {
-            fadeIn(animationSpec = tween(150)) + expandHorizontally(animationSpec = tween(150)) togetherWith
-            fadeOut(animationSpec = tween(150)) + shrinkHorizontally(animationSpec = tween(150))
-        },
-        label = "NavDockTransition"
-    ) { expanded ->
-        if (expanded) {
-            Surface(
-                modifier = Modifier
-                    .padding(horizontal = 24.dp)
-                    .height(60.dp)
-                    .fillMaxWidth(),
-                shape = RoundedCornerShape(32.dp),
-                color = surfaceColor.copy(alpha = 0.85f),
-                border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.05f)),
-                shadowElevation = 8.dp
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxSize(),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    val items = listOf(
-                        Triple(0, Icons.Default.LibraryMusic, "Library"),
-                        Triple(1, Icons.Default.MusicNote, "Player"),
-                        Triple(2, Icons.Default.Explore, "Discover")
-                    )
-                    items.forEach { (page, icon, label) ->
-                        val isSelected = selectedPage == page
-                        val contentColor by animateColorAsState(if (isSelected) Color(0xFFFF9800) else Color.White.copy(alpha = 0.4f))
-                        IconButton(onClick = { onPageSelected(page) }, modifier = Modifier.tactilePress(onClick = { onPageSelected(page) })) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(imageVector = icon, contentDescription = label, tint = contentColor, modifier = Modifier.size(24.dp))
-                                if (isSelected) Box(modifier = Modifier.padding(top = 2.dp).size(4.dp).background(Color(0xFFFF9800), CircleShape))
-                            }
-                        }
-                    }
-                    
-                    // Independent Search Trigger
-                    IconButton(onClick = onSearchClick, modifier = Modifier.tactilePress(onClick = onSearchClick)) {
-                    Icon(imageVector = Icons.Default.Search, contentDescription = "Search", tint = Color.White.copy(alpha = 0.4f), modifier = Modifier.size(24.dp))
-                }
-                }
-            }
-        } else {
-            Surface(
-                modifier = Modifier
-                    .size(56.dp)
-                    .tactilePress(onClick = onExpand),
-                shape = CircleShape,
-                color = surfaceColor.copy(alpha = 0.8f),
-                border = BorderStroke(1.dp, Color(0xFFFF9800).copy(alpha = 0.3f)),
-                shadowElevation = 12.dp
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(imageVector = Icons.Default.MusicNote, contentDescription = "Menu", tint = Color(0xFFFF9800), modifier = Modifier.size(28.dp))
-                    Box(modifier = Modifier.fillMaxSize().background(Brush.radialGradient(listOf(Color(0xFFFF9800).copy(alpha = 0.1f), Color.Transparent))))
-                }
-            }
-        }
-    }
-}
-
-@Composable
 fun BottomControlHub(
     selectedPage: Int,
+    dominantColor: Color = Color(0xFF0F0D0C),
+    adaptiveEnabled: Boolean = true,
     onPageSelected: (Int) -> Unit,
     onSearchClick: () -> Unit
 ) {
-    val amber = Color(0xFFF5C542)
-    val mutedGray = Color(0xFFA89A8F)
-    val surfaceColor = Color(0xFF0F0D0C)
+    val activeOrange = Color(0xFFFF9800)
+    val iconWhite = Color.White.copy(alpha = 0.85f)
+    val baseBg = if (adaptiveEnabled) dominantColor else Color(0xFF0F0D0C)
+    val frostedBg = baseBg.copy(alpha = 0.50f).compositeOver(Color.Black.copy(alpha = 0.70f))
 
     Column(
         modifier = Modifier
@@ -1236,27 +1269,14 @@ fun BottomControlHub(
             .padding(bottom = 12.dp, start = 24.dp, end = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // SLEEK PILL DOCK (Subtle Glassy Border + Swipe support)
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(64.dp)
-                .pointerInput(Unit) {
-                    detectHorizontalDragGestures { change, dragAmount ->
-                        change.consume()
-                        if (dragAmount > 30) {
-                            // Swipe Right -> Prev Page
-                            if (selectedPage > 0) onPageSelected(selectedPage - 1)
-                        } else if (dragAmount < -30) {
-                            // Swipe Left -> Next Page
-                            if (selectedPage < 2) onPageSelected(selectedPage + 1)
-                        }
-                    }
-                },
+                .height(64.dp),
             shape = RoundedCornerShape(32.dp),
-            color = surfaceColor.copy(alpha = 0.85f),
-            border = BorderStroke(1.dp, Color(0xFFFF9800).copy(alpha = 0.15f)),
-            shadowElevation = 12.dp
+            color = frostedBg,
+            border = BorderStroke(2.dp, activeOrange.copy(alpha = 0.5f)), // Refined orange border
+            shadowElevation = 20.dp
         ) {
             Row(
                 modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
@@ -1267,7 +1287,7 @@ fun BottomControlHub(
                 NavHubButton(icon = Icons.Default.MusicNote, isSelected = selectedPage == 1, onClick = { onPageSelected(1) })
                 NavHubButton(icon = Icons.Default.Explore, isSelected = selectedPage == 2, onClick = { onPageSelected(2) })
                 IconButton(onClick = onSearchClick, modifier = Modifier.tactilePress(onClick = onSearchClick)) {
-                    Icon(Icons.Default.Search, null, tint = mutedGray, modifier = Modifier.size(28.dp))
+                    Icon(Icons.Default.Search, null, tint = iconWhite, modifier = Modifier.size(28.dp))
                 }
             }
         }
@@ -1277,13 +1297,13 @@ fun BottomControlHub(
 
 @Composable
 fun NavHubButton(icon: ImageVector, isSelected: Boolean, onClick: () -> Unit) {
-    val amber = Color(0xFFF5C542)
-    val mutedGray = Color(0xFFA89A8F)
+    val activeOrange = Color(0xFFFF9800)
+    val iconWhite = Color.White.copy(alpha = 0.85f)
     IconButton(onClick = onClick, modifier = Modifier.tactilePress(onClick = onClick)) {
         Icon(
             imageVector = icon, 
             contentDescription = null, 
-            tint = if (isSelected) amber else mutedGray,
+            tint = if (isSelected) activeOrange else iconWhite,
             modifier = Modifier.size(28.dp)
         )
     }

@@ -39,6 +39,8 @@ public:
     void setPunchIntensity(float intensity);
     void setImmerseIntensity(float intensity);
     void setAuraIntensity(float intensity);
+    void setSpaceIntensity(float intensity);
+    void setEQBand(int band, float gainDb);
 
     void process(float* output, const void* input, int numFrames, int channels, bool is16Bit);
 
@@ -49,21 +51,35 @@ private:
     bool isEnabled;
     int profile;
 
-    float extraPunch;
-    float extraWidth;
-    float extraClarity;
+    float punchDb;
+    float auraDb;
+    float spaceIntensity;
+    float eqGains[9];
 
-    std::vector<BiquadFilter> filtersL;
-    std::vector<BiquadFilter> filtersR;
+    std::vector<BiquadFilter> profileFiltersL;
+    std::vector<BiquadFilter> profileFiltersR;
+
+    BiquadFilter userEqL[9];
+    BiquadFilter userEqR[9];
+
+    BiquadFilter punchFilterL, punchFilterR;
+    BiquadFilter auraFilterL, auraFilterR;
+
     BiquadFilter crossoverL;
     BiquadFilter crossoverR;
+
+    // Simple Reverb Delay Lines
+    static constexpr int numDelays = 4;
+    float* delayBuffers[numDelays];
+    int delayWritePtrs[numDelays];
+    int delayLengths[numDelays];
 
     float width;
     float envelope;
     float attackCoeff;
     float releaseCoeff;
 
-    static constexpr float limiterThreshold = 0.891f; // -1.0 dBFS
+    static constexpr float limiterThreshold = 0.92f;
 };
 
 #endif // PJ_HAVEN_DSP_H

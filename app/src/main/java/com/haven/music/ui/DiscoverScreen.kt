@@ -55,6 +55,7 @@ fun DiscoverScreen(
     onOnlineSearch: (String) -> Unit,
     onVoiceClick: () -> Unit,
     onOnlineTrackClick: (OnlineTrack) -> Unit,
+    onOnlineTrackLongClick: (OnlineTrack) -> Unit,
     onMixClick: (MusicMix) -> Unit,
     onSongClick: (Song) -> Unit,
     onRefresh: () -> Unit,
@@ -66,6 +67,13 @@ fun DiscoverScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
     val insights by viewModel.deepInsights.collectAsState()
     val localSearchResults by viewModel.searchResults.collectAsState()
+
+    // Trigger online search on entrance if query exists
+    LaunchedEffect(onlineSearchQuery) {
+        if (onlineSearchQuery.isNotBlank() && onlineSearchResults.isEmpty() && !isOnlineSearching) {
+            onOnlineSearch(onlineSearchQuery)
+        }
+    }
 
     // Focus Logic for Search Trigger
     LaunchedEffect(shouldRequestFocus) {
@@ -251,7 +259,8 @@ fun DiscoverScreen(
                     items(onlineSearchResults, key = { it.id }) { track ->
                         OnlineTrackItem(
                             track = track,
-                            onClick = { onOnlineTrackClick(track) }
+                            onClick = { onOnlineTrackClick(track) },
+                            onLongClick = { onOnlineTrackLongClick(track) }
                         )
                     }
                 }

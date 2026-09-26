@@ -51,6 +51,18 @@ Java_com_haven_music_PJHavenAudioProcessor_nativeSetAuraIntensity(JNIEnv* env, j
 }
 
 JNIEXPORT void JNICALL
+Java_com_haven_music_PJHavenAudioProcessor_nativeSetSpaceIntensity(JNIEnv* env, jobject thiz, jlong handle, jfloat intensity) {
+    auto dsp = reinterpret_cast<PJHavenDSP*>(handle);
+    if (dsp) dsp->setSpaceIntensity(intensity);
+}
+
+JNIEXPORT void JNICALL
+Java_com_haven_music_PJHavenAudioProcessor_nativeSetEQBand(JNIEnv* env, jobject thiz, jlong handle, jint band, jfloat gainDb) {
+    auto dsp = reinterpret_cast<PJHavenDSP*>(handle);
+    if (dsp) dsp->setEQBand(band, gainDb);
+}
+
+JNIEXPORT void JNICALL
 Java_com_haven_music_PJHavenAudioProcessor_nativeProcess(
     JNIEnv* env, jobject thiz, jlong handle,
     jobject input, jobject output,

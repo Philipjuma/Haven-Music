@@ -118,7 +118,7 @@ class LibraryPersistenceManager(context: Context) {
         return list
     }
 
-    fun saveSettings(rememberPosition: Boolean, engine: String, audioSafeEnabled: Boolean, skipSilence: Boolean, resumeBT: Boolean, resumeHeadset: Boolean) {
+    fun saveSettings(rememberPosition: Boolean, engine: String, audioSafeEnabled: Boolean, skipSilence: Boolean, resumeBT: Boolean, resumeHeadset: Boolean, adaptiveControls: Boolean) {
         prefs.edit()
             .putBoolean("remember_position", rememberPosition)
             .putString("audio_engine", engine)
@@ -126,9 +126,11 @@ class LibraryPersistenceManager(context: Context) {
             .putBoolean("skip_silence", skipSilence)
             .putBoolean("resume_on_bt", resumeBT)
             .putBoolean("resume_on_headset", resumeHeadset)
+            .putBoolean("adaptive_controls", adaptiveControls)
             .apply()
     }
 
+    fun getAdaptiveControlsEnabled(): Boolean = prefs.getBoolean("adaptive_controls", true)
     fun getSkipSilenceEnabled(): Boolean = prefs.getBoolean("skip_silence", false)
     fun getResumeOnBT(): Boolean = prefs.getBoolean("resume_on_bt", false)
     fun getResumeOnHeadset(): Boolean = prefs.getBoolean("resume_on_headset", false)
@@ -181,7 +183,7 @@ class LibraryPersistenceManager(context: Context) {
     }
 
     fun getRememberPosition(): Boolean = prefs.getBoolean("remember_position", true)
-    fun getAudioEngine(): String = prefs.getString("audio_engine", "Media3") ?: "Media3"
+    fun getAudioEngine(): String = prefs.getString("audio_engine", "PJ_Haven_2_0") ?: "PJ_Haven_2_0"
 
     fun saveColorCache(colors: Map<Long, Int>) {
         val json = JSONObject()

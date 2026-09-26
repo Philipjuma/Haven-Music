@@ -1,7 +1,9 @@
 package com.haven.music.ui
 
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
+import android.net.Uri
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
@@ -11,6 +13,8 @@ import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -47,6 +51,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.palette.graphics.Palette
 import coil.ImageLoader
 import coil.compose.AsyncImage
@@ -57,21 +62,30 @@ import com.haven.music.Song
 import kotlinx.coroutines.delay
 import java.util.Calendar
 
+val PremiumEasing = CubicBezierEasing(0.3f, 0.0f, 0.1f, 1.0f)
+val PremiumSpring = spring<Float>(
+    dampingRatio = Spring.DampingRatioLowBouncy,
+    stiffness = Spring.StiffnessLow
+)
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun Modifier.tactilePress(
     enabled: Boolean = true,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null
 ): Modifier {
-    var pressed by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
     val scale by animateFloatAsState(
-        targetValue = if (pressed && enabled) 0.96f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        targetValue = if (isPressed && enabled) 0.92f else 1f, // Reduced bounce
+        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMedium),
         label = "pressScale"
     )
     val translationY by animateFloatAsState(
-        targetValue = if (pressed && enabled) 2f else 0f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        targetValue = if (isPressed && enabled) 6.5f else 0f, // Reduced travel
+        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMedium),
         label = "pressTranslation"
     )
 
@@ -81,21 +95,13 @@ fun Modifier.tactilePress(
             scaleY = scale
             this.translationY = translationY
         }
-        .pointerInput(enabled) {
-            if (!enabled) return@pointerInput
-            detectTapGestures(
-                onPress = {
-                    pressed = true
-                    try {
-                        tryAwaitRelease()
-                    } finally {
-                        pressed = false
-                    }
-                },
-                onTap = { onClick() },
-                onLongPress = { onLongClick?.invoke() }
-            )
-        }
+        .combinedClickable(
+            enabled = enabled,
+            interactionSource = interactionSource,
+            indication = null,
+            onClick = onClick,
+            onLongClick = onLongClick
+        )
 }
 
 private val orangeAccent = Color(0xFFFF9800)
@@ -195,21 +201,22 @@ fun getPersonalityGreeting(artistName: String? = null, viewModel: com.haven.musi
 }
 
 @Composable
-fun OnlineTrackItem(track: com.haven.music.OnlineTrack, onClick: () -> Unit) {
+fun OnlineTrackItem(track: com.haven.music.OnlineTrack, onClick: () -> Unit, onLongClick: () -> Unit = {}) {
     val context = LocalContext.current
     val accentColor = when (track.provider) {
+        "Haven" -> Color(0xFF4CAF50) // Bright Green for Haven Music
         "MusicBrainz" -> Color(0xFF2196F3)
         "Deezer" -> Color(0xFFFF5722) // Deep Orange
         "iTunes" -> Color(0xFFE91E63) // Pink
         "Baquir" -> Color(0xFF9C27B0) // Purple
-        else -> Color(0xFF4CAF50) // Green for Audius/Jamendo
+        else -> Color(0xFF4CAF50) // Green for Audius/Jamendo/Haven
     }
     
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 4.dp)
-            .tactilePress(onClick = onClick),
+            .tactilePress(onClick = onClick, onLongClick = onLongClick),
         color = accentColor.copy(alpha = 0.05f).compositeOver(Color.Black.copy(alpha = 0.2f)),
         shape = RoundedCornerShape(24.dp),
         border = BorderStroke(1.dp, accentColor.copy(alpha = 0.15f))
@@ -735,93 +742,186 @@ fun DetailSongItem(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SongActionMenu(
-    song: Song,
+fun PremiumActionMenu(
+    title: String,
+    subtitle: String,
+    artUri: Uri?,
     isFavorite: Boolean,
+    isOnline: Boolean = false,
+    provider: String? = null,
     onDismiss: () -> Unit,
     onPlay: () -> Unit,
-    onAddToPlaylist: () -> Unit,
     onToggleFavorite: () -> Unit,
     onGoToArtist: () -> Unit,
-    onGoToAlbum: () -> Unit,
-    onAddToQueue: () -> Unit,
-    onPlayNext: () -> Unit,
+    onGoToAlbum: (() -> Unit)? = null,
+    onLyricsClick: () -> Unit,
+    onAddToPlaylist: (() -> Unit)? = null,
+    onAddToQueue: (() -> Unit)? = null,
+    onPlayNext: (() -> Unit)? = null,
     onRemoveFromPlaylist: (() -> Unit)? = null,
-    onRemoveFromQueue: (() -> Unit)? = null,
-    onLyricsClick: (() -> Unit)? = null
+    onRemoveFromQueue: (() -> Unit)? = null
 ) {
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
-        scrimColor = Color.Black.copy(alpha = 0.4f),
-        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
-    ) {
-        Column(
+    val context = LocalContext.current
+    val query = "$title $subtitle"
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 48.dp, start = 24.dp, end = 24.dp)
+                .fillMaxWidth(0.9f)
+                .wrapContentHeight(),
+            shape = RoundedCornerShape(32.dp),
+            color = Color(0xFF0F0D0C).copy(alpha = 0.98f),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)),
+            shadowElevation = 32.dp
         ) {
-            // Song Header
-            Row(
-                modifier = Modifier.padding(vertical = 16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                AsyncImage(
-                    model = song.albumArtUri,
-                    contentDescription = null,
-                    modifier = Modifier.size(64.dp).clip(RoundedCornerShape(16.dp)),
-                    contentScale = ContentScale.Crop
+            Box(modifier = Modifier.fillMaxWidth()) {
+                // Background Blur Effect (Simulated with Gradient)
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color(0xFFFF9800).copy(alpha = 0.05f), Color.Transparent)
+                            )
+                        )
                 )
-                Column(modifier = Modifier.padding(start = 16.dp)) {
-                    Text(text = havenTransform(song.title), style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), color = Color.White)
-                    Text(text = havenTransform(song.artist, isArtistName = true), style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.6f))
+
+                Column(
+                    modifier = Modifier
+                        .padding(24.dp)
+                        .fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // Header Section
+                    AsyncImage(
+                        model = artUri,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(140.dp)
+                            .clip(RoundedCornerShape(24.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Text(
+                        text = havenTransform(title),
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black, fontSize = 20.sp),
+                        color = Color.White,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        modifier = Modifier.basicMarquee()
+                    )
+                    Text(
+                        text = havenTransform(subtitle, isArtistName = true),
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                        color = Color.White.copy(alpha = 0.6f),
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(24.dp))
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    // Action Grid
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            MenuBoxItem(
+                                modifier = Modifier.weight(1f),
+                                icon = Icons.Default.PlayArrow,
+                                label = "PLAY",
+                                onClick = { onPlay(); onDismiss() }
+                            )
+                            MenuBoxItem(
+                                modifier = Modifier.weight(1f),
+                                icon = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                label = if (isFavorite) "UNLIKE" else "LIKE",
+                                onClick = { onToggleFavorite(); onDismiss() }
+                            )
+                        }
+                        
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            MenuBoxItem(
+                                modifier = Modifier.weight(1f),
+                                icon = Icons.Default.Person,
+                                label = "ARTIST",
+                                onClick = { onGoToArtist(); onDismiss() }
+                            )
+                            MenuBoxItem(
+                                modifier = Modifier.weight(1f),
+                                icon = Icons.Default.FormatQuote,
+                                label = "LYRICS",
+                                onClick = { onLyricsClick(); onDismiss() }
+                            )
+                        }
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            MenuBoxItem(
+                                modifier = Modifier.weight(1f),
+                                icon = Icons.AutoMirrored.Filled.PlaylistAdd,
+                                label = "PLAYLIST",
+                                onClick = { onAddToPlaylist?.invoke(); onDismiss() }
+                            )
+                            MenuBoxItem(
+                                modifier = Modifier.weight(1f),
+                                icon = Icons.AutoMirrored.Filled.QueueMusic,
+                                label = "QUEUE",
+                                onClick = { onAddToQueue?.invoke(); onDismiss() }
+                            )
+                        }
+                    }
+
+                    if (isOnline) {
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Text(
+                            text = "PLAY ON",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 3.sp,
+                                fontSize = 10.sp
+                            ),
+                            color = Color(0xFFFF9800)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            ExternalAppButton(
+                                modifier = Modifier.weight(1f),
+                                name = "Spotify",
+                                color = Color(0xFF1DB954),
+                                onClick = { openExternalApp(context, query, "Spotify"); onDismiss() }
+                            )
+                            ExternalAppButton(
+                                modifier = Modifier.weight(1f),
+                                name = "iTunes",
+                                color = Color(0xFFFA243C),
+                                onClick = { openExternalApp(context, query, "iTunes"); onDismiss() }
+                            )
+                            ExternalAppButton(
+                                modifier = Modifier.weight(1f),
+                                name = "Deezer",
+                                color = Color(0xFF8E24AA),
+                                onClick = { openExternalApp(context, query, "Deezer"); onDismiss() }
+                            )
+                            ExternalAppButton(
+                                modifier = Modifier.weight(1f),
+                                name = "YouTube",
+                                color = Color(0xFFFF0000),
+                                onClick = { openExternalApp(context, query, "YouTube"); onDismiss() }
+                            )
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(24.dp))
+                    TextButton(onClick = onDismiss) {
+                        Text("CLOSE", color = Color.White.copy(alpha = 0.4f), fontWeight = FontWeight.Bold)
+                    }
                 }
             }
-            
-            HorizontalDivider(color = Color.White.copy(alpha = 0.1f), modifier = Modifier.padding(bottom = 16.dp))
-            
-            // Actions
-            MenuActionItem(icon = Icons.Default.PlayArrow, label = "Play", onClick = { onPlay(); onDismiss() })
-            MenuActionItem(icon = Icons.AutoMirrored.Filled.PlaylistAdd, label = "Add to Playlist", onClick = { onAddToPlaylist(); onDismiss() })
-            
-            if (onRemoveFromPlaylist != null) {
-                MenuActionItem(icon = Icons.Default.PlaylistRemove, label = "Remove from Playlist", onClick = { onRemoveFromPlaylist(); onDismiss() })
-            }
-            
-            if (onRemoveFromQueue != null) {
-                MenuActionItem(icon = Icons.Default.DeleteSweep, label = "Remove from Queue", onClick = { onRemoveFromQueue(); onDismiss() })
-            }
-
-            MenuActionItem(
-                icon = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, 
-                label = if (isFavorite) "Remove from Favorites" else "Add to Favorites", 
-                onClick = { onToggleFavorite(); onDismiss() }
-            )
-            MenuActionItem(icon = Icons.Default.Person, label = "Go to Artist", onClick = { onGoToArtist(); onDismiss() })
-            MenuActionItem(icon = Icons.Default.Album, label = "Go to Album", onClick = { onGoToAlbum(); onDismiss() })
-            
-            if (onLyricsClick != null) {
-                MenuActionItem(icon = Icons.Default.FormatQuote, label = "Lyrics", onClick = { onLyricsClick(); onDismiss() })
-            }
-            
-            MenuActionItem(icon = Icons.AutoMirrored.Filled.QueueMusic, label = "Add to Queue", onClick = { onAddToQueue(); onDismiss() })
-            MenuActionItem(icon = Icons.Default.SkipNext, label = "Play Next", onClick = { onPlayNext(); onDismiss() })
-            
-            // Song Info
-            HorizontalDivider(color = Color.White.copy(alpha = 0.1f), modifier = Modifier.padding(vertical = 16.dp))
-            Text(
-                text = "INFO",
-                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 2.sp),
-                color = Color(0xFFFF9800).copy(alpha = 0.6f)
-            )
-            Text(
-                text = "Album: ${song.album}\nDuration: ${formatDuration(song.duration)}",
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.4f),
-                modifier = Modifier.padding(top = 8.dp)
-            )
         }
     }
 }
@@ -842,6 +942,33 @@ fun MenuActionItem(icon: ImageVector, label: String, onClick: () -> Unit) {
             color = Color.White,
             modifier = Modifier.padding(start = 16.dp)
         )
+    }
+}
+
+@Composable
+fun MenuBoxItem(
+    modifier: Modifier = Modifier,
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = modifier
+            .height(56.dp)
+            .tactilePress(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        color = Color.White.copy(alpha = 0.04f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(icon, null, tint = Color(0xFFFF9800), modifier = Modifier.size(20.dp))
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+        }
     }
 }
 
@@ -911,59 +1038,74 @@ fun ArtistActionMenu(
 fun Tactile3DButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    shape: androidx.compose.ui.graphics.Shape = CircleShape, // Default to circle for "cuteness"
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(16.dp), // Premium Box
+    backgroundColor: Color = Color(0xFF0F0D0C),
+    outlineColor: Color = Color(0xFFFF9800),
     content: @Composable () -> Unit
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
+    var isPressed by remember { mutableStateOf(false) }
     
     val verticalOffset by animateDpAsState(
-        targetValue = if (isPressed) 1.dp else 4.dp,
-        animationSpec = spring(stiffness = Spring.StiffnessHigh)
+        targetValue = if (isPressed) 1.dp else 5.2.dp, // Smooth 20% reduced travel
+        animationSpec = spring(stiffness = Spring.StiffnessHigh),
+        label = "verticalOffset"
     )
     
     val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.97f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)
+        targetValue = if (isPressed) 0.94f else 1f, // Smooth 20% reduced bounce
+        animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessHigh),
+        label = "scale"
     )
 
     Box(
-        modifier = modifier
-            .graphicsLayer {
-                this.translationY = verticalOffset.toPx()
-                this.scaleX = scale
-                this.scaleY = scale
-            }
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onClick
-            )
+        modifier = modifier,
+        contentAlignment = Alignment.Center
     ) {
         // Soft Drop Shadow
-        Surface(
-            modifier = Modifier
-                .fillMaxSize()
-                .offset(y = 3.dp),
-            shape = shape,
-            color = Color.Black.copy(alpha = 0.4f),
-            content = {}
-        )
-        
-        // Main Surface with Polished Black Gradient
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .offset(y = 6.dp)
+                .background(Color.Black.copy(alpha = 0.5f), shape)
+        )
+        
+        // Interactive Top Surface
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    this.translationY = verticalOffset.toPx()
+                    this.scaleX = scale
+                    this.scaleY = scale
+                }
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color(0xFF322E2B), Color(0xFF0F0D0C))
+                        listOf(backgroundColor.copy(alpha = 0.8f), backgroundColor)
                     ),
                     shape = shape
                 )
-                .border(BorderStroke(0.8.dp, Color.White.copy(alpha = 0.15f)), shape),
+                .border(BorderStroke(0.8.dp, Color.White.copy(alpha = 0.15f)), shape)
+                .border(BorderStroke(1.5.dp, outlineColor.copy(alpha = 0.3f)), shape)
+                .clip(shape)
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        down.consume()
+                        isPressed = true
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            change.consume()
+                            if (!change.pressed) {
+                                break
+                            }
+                        }
+                        isPressed = false
+                        onClick()
+                    }
+                },
             contentAlignment = Alignment.Center
         ) {
-            // Inset highlight at the top edge for 3D depth
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -991,7 +1133,7 @@ fun HavenLogo(modifier: Modifier = Modifier) {
             fontFamily = androidx.compose.ui.text.font.FontFamily.SansSerif,
             letterSpacing = 4.sp
         ),
-        color = Color.White
+        color = Color(0xFFFF9800) // App Orange
     )
 }
 
@@ -1036,57 +1178,130 @@ fun HavenHintBox(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        shape = RoundedCornerShape(28.dp),
-        color = Color(0xFF1A1A1A).copy(alpha = 0.95f),
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(24.dp),
+        color = Color(0xFF1E1E1E).copy(alpha = 0.96f),
         border = BorderStroke(1.dp, accentColor.copy(alpha = 0.4f)),
-        shadowElevation = 24.dp
+        shadowElevation = 16.dp
     ) {
         Row(
-            modifier = Modifier.padding(20.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
-                modifier = Modifier.size(56.dp),
+                modifier = Modifier.size(48.dp),
                 shape = CircleShape,
                 color = accentColor.copy(alpha = 0.15f)
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(icon, null, tint = accentColor, modifier = Modifier.size(28.dp))
+                    Icon(icon, null, tint = accentColor, modifier = Modifier.size(24.dp))
                 }
             }
             
-            Column(modifier = Modifier.weight(1f).padding(horizontal = 20.dp)) {
+            Column(modifier = Modifier.weight(1f).padding(horizontal = 16.dp)) {
                 Text(
                     text = title.uppercase(),
                     style = MaterialTheme.typography.labelMedium.copy(
                         fontWeight = FontWeight.Black, 
-                        letterSpacing = 2.sp,
-                        fontSize = 14.sp
+                        letterSpacing = 1.5.sp,
+                        fontSize = 13.sp
                     ),
                     color = titleColor
                 )
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = message,
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        lineHeight = 20.sp,
-                        fontSize = 15.sp
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        lineHeight = 18.sp,
+                        fontSize = 13.sp
                     ),
                     color = messageColor
                 )
             }
             
-            IconButton(
-                onClick = onDismiss,
-                modifier = Modifier.size(32.dp)
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.1f))
+                    .clickable(onClick = onDismiss),
+                contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.Close, null, tint = Color.White.copy(alpha = 0.4f), modifier = Modifier.size(20.dp))
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Close hint",
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
             }
         }
     }
 }
 
+@Composable
+fun ExternalAppButton(
+    modifier: Modifier = Modifier,
+    name: String,
+    color: Color,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = modifier
+            .height(36.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(color.copy(alpha = 0.15f), RoundedCornerShape(10.dp))
+            .border(BorderStroke(1.dp, color.copy(alpha = 0.3f)), RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = name.uppercase(),
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Black, fontSize = 8.sp),
+            color = color
+        )
+    }
+}
+
+fun openExternalApp(context: android.content.Context, query: String, provider: String) {
+    val encodedQuery = Uri.encode(query)
+    val intent = when (provider) {
+        "YouTube" -> Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=$encodedQuery")).apply {
+            setPackage("com.google.android.youtube")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        "Spotify" -> Intent(Intent.ACTION_VIEW, Uri.parse("spotify:search:$encodedQuery")).apply {
+            setPackage("com.spotify.music")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        "Deezer" -> Intent(Intent.ACTION_VIEW, Uri.parse("deezer://www.deezer.com/search/$encodedQuery")).apply {
+            setPackage("deezer.android.app")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        "Apple Music", "iTunes" -> Intent(Intent.ACTION_VIEW, Uri.parse("https://music.apple.com/search?term=$encodedQuery")).apply {
+            setPackage("com.apple.android.music")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        else -> Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=$encodedQuery"))
+    }
+    try {
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        val webUrl = when (provider) {
+            "Spotify" -> "https://open.spotify.com/search/$encodedQuery"
+            "Deezer" -> "https://www.deezer.com/search/$encodedQuery"
+            "Apple Music", "iTunes" -> "https://music.apple.com/search?term=$encodedQuery"
+            "YouTube" -> "https://www.youtube.com/results?search_query=$encodedQuery"
+            else -> "https://www.google.com/search?q=$encodedQuery"
+        }
+        try {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(webUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e2: Exception) {
+            android.widget.Toast.makeText(context, "Could not open $provider", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+}
 // Helper to composite colors
 fun Color.compositeOver(base: Color): Color {
     val alpha = this.alpha

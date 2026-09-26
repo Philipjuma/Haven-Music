@@ -37,36 +37,36 @@ fun MixDetailScreen(
         modifier = Modifier.fillMaxSize(),
         color = Color(0xFF121212)
     ) {
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
+                .statusBarsPadding(),
+            contentPadding = PaddingValues(bottom = 180.dp)
         ) {
-            // Header
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
-                }
-                Text(
-                    text = havenTransform("Music Mix"),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = Color.White.copy(alpha = 0.6f),
-                    modifier = Modifier.padding(start = 8.dp)
-                )
-            }
+            // 1. Navigation Header & Collage / Hero
+            item {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = onBack, modifier = Modifier.tactilePress(onClick = onBack)) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        }
+                        Text(
+                            text = havenTransform("Music Mix"),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = Color.White.copy(alpha = 0.6f),
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    }
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp)
-            ) {
-                // 1. Collage / Hero
-                item {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally, 
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp)
+                    ) {
                         Box(modifier = Modifier.size(200.dp).clip(RoundedCornerShape(32.dp))) {
                             AsyncImage(
                                 model = mix.imageUrls.getOrNull(0),
@@ -87,46 +87,46 @@ fun MixDetailScreen(
                             text = havenTransform(mix.description),
                             style = MaterialTheme.typography.bodyLarge,
                             color = Color.White.copy(alpha = 0.6f),
-                            modifier = Modifier.padding(top = 4.dp)
+                            modifier = Modifier.padding(top = 4.dp, start = 24.dp, end = 24.dp)
                         )
-                        
-                        Spacer(modifier = Modifier.height(32.dp))
                     }
                 }
+            }
 
-                // 2. Action Hub
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 32.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+            // 2. Action Hub
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 32.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Button(
+                        onClick = { onPlayAll(mix.songs) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800)),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.height(48.dp).weight(1f).tactilePress(onClick = { onPlayAll(mix.songs) })
                     ) {
-                        Button(
-                            onClick = { onPlayAll(mix.songs) },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800)),
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier.height(48.dp).weight(1f)
-                        ) {
-                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("PLAY", fontWeight = FontWeight.Bold)
-                        }
-                        
-                        OutlinedButton(
-                            onClick = { onShuffleAll(mix.songs) },
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier.height(48.dp).weight(1f),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
-                        ) {
-                            Icon(Icons.Default.Shuffle, contentDescription = null, modifier = Modifier.size(20.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("SHUFFLE")
-                        }
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("PLAY", fontWeight = FontWeight.Bold)
+                    }
+                    
+                    OutlinedButton(
+                        onClick = { onShuffleAll(mix.songs) },
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.height(48.dp).weight(1f).tactilePress(onClick = { onShuffleAll(mix.songs) }),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                    ) {
+                        Icon(Icons.Default.Shuffle, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("SHUFFLE")
                     }
                 }
+            }
 
-                // 3. Songs List
-                itemsIndexed(mix.songs, key = { _, s -> s.id }) { index, song ->
+            // 3. Songs List
+            itemsIndexed(mix.songs, key = { _, s -> s.id }) { index, song ->
+                Box(modifier = Modifier.padding(horizontal = 12.dp)) {
                     SongItem(
                         index = index + 1,
                         song = song,
@@ -139,12 +139,8 @@ fun MixDetailScreen(
                         onToggleFavorite = { /* Not in mix room directly */ },
                         onLongClick = { onSongLongClick(song) }
                     )
-                    Spacer(modifier = Modifier.height(10.dp))
                 }
-
-                item {
-                    Spacer(modifier = Modifier.height(140.dp))
-                }
+                Spacer(modifier = Modifier.height(10.dp))
             }
         }
     }

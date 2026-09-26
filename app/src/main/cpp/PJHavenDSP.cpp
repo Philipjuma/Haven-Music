@@ -49,16 +49,39 @@ void BiquadFilter::setLowPass(float sampleRate, float freq, float q) {
 
 PJHavenDSP::PJHavenDSP() :
     sampleRate(44100.0f), isEnabled(false), profile(1),
-    extraPunch(0.0f), extraWidth(0.0f), extraClarity(0.0f),
+    punchDb(0.0f), auraDb(0.0f), spaceIntensity(0.0f),
     width(1.0f), envelope(0.0f) {
+
+    for (int i = 0; i < 9; ++i) eqGains[i] = 0.0f;
+
+    // Initialize delay buffers for Space effect
+    for (int i = 0; i < numDelays; ++i) {
+        delayLengths[i] = (int)(sampleRate * (0.03f + i * 0.015f));
+        delayBuffers[i] = new float[delayLengths[i]];
+        std::fill(delayBuffers[i], delayBuffers[i] + delayLengths[i], 0.0f);
+        delayWritePtrs[i] = 0;
+    }
+
     updateFilters();
 }
 
-PJHavenDSP::~PJHavenDSP() {}
+PJHavenDSP::~PJHavenDSP() {
+    for (int i = 0; i < numDelays; ++i) {
+        delete[] delayBuffers[i];
+    }
+}
 
 void PJHavenDSP::setSampleRate(float sr) {
     if (sampleRate != sr) {
         sampleRate = sr;
+        // Re-init delay buffers for new sample rate
+        for (int i = 0; i < numDelays; ++i) {
+            delete[] delayBuffers[i];
+            delayLengths[i] = (int)(sampleRate * (0.03f + i * 0.015f));
+            delayBuffers[i] = new float[delayLengths[i]];
+            std::fill(delayBuffers[i], delayBuffers[i] + delayLengths[i], 0.0f);
+            delayWritePtrs[i] = 0;
+        }
         updateFilters();
     }
 }
@@ -76,68 +99,68 @@ void PJHavenDSP::setProfile(int p) {
 }
 
 void PJHavenDSP::setPunchIntensity(float intensity) {
-    extraPunch = (intensity / 1000.0f) * 4.0f;
+    punchDb = (intensity / 1000.0f) * 8.0f; // Max +8dB Punch
+    updateFilters();
 }
 
 void PJHavenDSP::setImmerseIntensity(float intensity) {
-    extraWidth = (intensity / 1000.0f) * 0.25f;
+    // Width already handles extraWidth in process, but let's map it clearly
+    // intensity is 0..1000
+    width = (profile == 1) ? 1.18f : 1.0f;
+    width += (intensity / 1000.0f) * 0.5f; // Add up to 0.5 additional width
 }
 
 void PJHavenDSP::setAuraIntensity(float intensity) {
-    extraClarity = (intensity / 100.0f) * 3.0f;
+    auraDb = (intensity / 100.0f) * 5.0f; // Max +5dB Aura/Air
+    updateFilters();
+}
+
+void PJHavenDSP::setSpaceIntensity(float intensity) {
+    spaceIntensity = (intensity / 5.0f) * 0.35f; // Map preset 0..5 to wet level
+}
+
+void PJHavenDSP::setEQBand(int band, float gainDb) {
+    if (band >= 0 && band < 9) {
+        eqGains[band] = gainDb / 100.0f; // Input usually in millibel
+        updateFilters();
+    }
 }
 
 void PJHavenDSP::updateFilters() {
-    filtersL.clear();
-    filtersR.clear();
+    profileFiltersL.clear();
+    profileFiltersR.clear();
 
     float attackMs = 10.0f;
     float releaseMs = 120.0f;
     attackCoeff = 1.0f - exp(-1.0f / (attackMs * 0.001f * sampleRate));
     releaseCoeff = 1.0f - exp(-1.0f / (releaseMs * 0.001f * sampleRate));
 
-    if (profile == 1) { // Headphones
+    // 1. User 9-Band EQ Frequencies
+    float freqs[9] = {60.0f, 150.0f, 250.0f, 500.0f, 1000.0f, 2000.0f, 4000.0f, 8000.0f, 16000.0f};
+    for (int i = 0; i < 9; ++i) {
+        userEqL[i].setPeaking(sampleRate, freqs[i], 1.2f, eqGains[i]);
+        userEqR[i].setPeaking(sampleRate, freqs[i], 1.2f, eqGains[i]);
+    }
+
+    // 2. Punch & Aura
+    punchFilterL.setLowShelf(sampleRate, 100.0f, 0.7f, punchDb);
+    punchFilterR.setLowShelf(sampleRate, 100.0f, 0.7f, punchDb);
+    auraFilterL.setPeaking(sampleRate, 12000.0f, 0.7f, auraDb);
+    auraFilterR.setPeaking(sampleRate, 12000.0f, 0.7f, auraDb);
+
+    // 3. Profile Specific Tuning
+    if (profile == 1) { // Headphones: Warmth & Air
         BiquadFilter f;
-        f.setLowShelf(sampleRate, 60.0f, 0.7f, 5.0f);
-        filtersL.push_back(f); filtersR.push_back(f);
-
-        f.setPeaking(sampleRate, 90.0f, 1.0f, 5.0f);
-        filtersL.push_back(f); filtersR.push_back(f);
-
-        f.setPeaking(sampleRate, 120.0f, 1.0f, 3.5f);
-        filtersL.push_back(f); filtersR.push_back(f);
-
-        f.setPeaking(sampleRate, 2000.0f, 1.0f, 0.8f);
-        filtersL.push_back(f); filtersR.push_back(f);
-
-        f.setPeaking(sampleRate, 4000.0f, 1.0f, 1.5f);
-        filtersL.push_back(f); filtersR.push_back(f);
-
-        f.setPeaking(sampleRate, 8000.0f, 1.0f, 2.5f);
-        filtersL.push_back(f); filtersR.push_back(f);
-
-        f.setPeaking(sampleRate, 16000.0f, 1.0f, 2.0f);
-        filtersL.push_back(f); filtersR.push_back(f);
-
-        width = 1.18f;
-    } else { // Speaker
-        BiquadFilter f;
-        f.setPeaking(sampleRate, 150.0f, 1.0f, 4.5f);
-        filtersL.push_back(f); filtersR.push_back(f);
-
-        f.setPeaking(sampleRate, 200.0f, 1.0f, 3.5f);
-        filtersL.push_back(f); filtersR.push_back(f);
-
-        f.setPeaking(sampleRate, 300.0f, 1.0f, 1.5f);
-        filtersL.push_back(f); filtersR.push_back(f);
-
-        f.setPeaking(sampleRate, 4000.0f, 1.0f, 2.0f);
-        filtersL.push_back(f); filtersR.push_back(f);
-
+        f.setLowShelf(sampleRate, 60.0f, 0.7f, 3.0f);
+        profileFiltersL.push_back(f); profileFiltersR.push_back(f);
         f.setPeaking(sampleRate, 8000.0f, 1.0f, 2.0f);
-        filtersL.push_back(f); filtersR.push_back(f);
-
-        width = 1.0f;
+        profileFiltersL.push_back(f); profileFiltersR.push_back(f);
+    } else { // Speaker: Body & Presence
+        BiquadFilter f;
+        f.setPeaking(sampleRate, 250.0f, 1.0f, 5.0f);
+        profileFiltersL.push_back(f); profileFiltersR.push_back(f);
+        f.setPeaking(sampleRate, 4000.0f, 1.0f, 2.5f);
+        profileFiltersL.push_back(f); profileFiltersR.push_back(f);
     }
 
     crossoverL.setLowPass(sampleRate, 120.0f, 0.707f);
@@ -145,15 +168,7 @@ void PJHavenDSP::updateFilters() {
 }
 
 void PJHavenDSP::process(float* output, const void* input, int numFrames, int channels, bool is16Bit) {
-    if (!isEnabled) {
-        // Passthrough with conversion if needed (though usually handled in Kotlin for efficiency)
-        return;
-    }
-
-    float currentWidth = width + extraWidth;
-    float punchGain = pow(10.0f, extraPunch / 20.0f);
-    float clarityGain = pow(10.0f, extraClarity / 20.0f);
-    float heat = punchGain * 0.7f + clarityGain * 0.3f;
+    if (!isEnabled) return;
 
     const auto* in16 = static_cast<const int16_t*>(input);
     const float* inF = static_cast<const float*>(input);
@@ -173,46 +188,60 @@ void PJHavenDSP::process(float* output, const void* input, int numFrames, int ch
             else l = r = inF[i];
         }
 
-        // 1. Headroom
-        l *= 0.45f;
-        r *= 0.45f;
+        // --- DSP CHAIN ---
 
-        // 2. EQ
-        for (auto& f : filtersL) l = f.process(l);
-        for (auto& f : filtersR) r = f.process(r);
+        // 1. Initial Headroom
+        l *= 0.70f; r *= 0.70f;
 
-        // 3. Heat
-        l *= heat;
-        r *= heat;
+        // 2. Punch & Aura (Physical Bass/Clarity)
+        l = punchFilterL.process(l); r = punchFilterR.process(r);
+        l = auraFilterL.process(l); r = auraFilterR.process(r);
 
-        // 4. Stereo Widening (120Hz crossover)
+        // 3. 9-Band User EQ
+        for (int b = 0; b < 9; ++b) {
+            l = userEqL[b].process(l);
+            r = userEqR[b].process(r);
+        }
+
+        // 4. Profile Overlays
+        for (auto& f : profileFiltersL) l = f.process(l);
+        for (auto& f : profileFiltersR) r = f.process(r);
+
+        // 5. Immerse (Stereo 3D Expansion)
         float lowL = crossoverL.process(l);
         float lowR = crossoverR.process(r);
         float highL = l - lowL;
         float highR = r - lowR;
-
         float mid = (highL + highR) * 0.5f;
-        float side = (highL - highR) * 0.5f * currentWidth;
-        float lowMid = (lowL + lowR) * 0.5f;
+        float side = (highL - highR) * 0.5f * width;
+        l = lowL + (mid + side);
+        r = lowR + (mid - side);
 
-        l = lowMid + (mid + side);
-        r = lowMid + (mid - side);
+        // 6. Space (Native Reverb Engine)
+        if (spaceIntensity > 0.0f) {
+            float reverbSignal = 0.0f;
+            for (int d = 0; d < numDelays; ++d) {
+                reverbSignal += delayBuffers[d][delayWritePtrs[d]] * 0.4f;
+                delayBuffers[d][delayWritePtrs[d]] = (l + r) * 0.5f + (reverbSignal * 0.3f);
+                delayWritePtrs[d] = (delayWritePtrs[d] + 1) % delayLengths[d];
+            }
+            l += reverbSignal * spaceIntensity;
+            r += reverbSignal * spaceIntensity;
+        }
 
-        // 5. Dynamics
+        // 7. Dynamics & Soft Limiting
         float absSample = std::max(std::abs(l), std::abs(r));
         if (absSample > envelope) envelope += attackCoeff * (absSample - envelope);
         else envelope += releaseCoeff * (absSample - envelope);
 
-        float threshold = 0.251f;
-        float ratio = 2.0f;
-        if (envelope > threshold) {
-            float reduction = 1.0f / (1.0f + (envelope - threshold) * (ratio - 1.0f));
-            l *= reduction;
-            r *= reduction;
-        }
+        auto softLimit = [](float x) {
+            float threshold = 0.75f;
+            if (std::abs(x) < threshold) return x;
+            float sign = (x > 0) ? 1.0f : -1.0f;
+            return sign * (threshold + (0.95f - threshold) * std::tanh((std::abs(x) - threshold) / (0.95f - threshold)));
+        };
 
-        // 6. Limiter
-        output[i * 2] = std::max(-limiterThreshold, std::min(limiterThreshold, l));
-        output[i * 2 + 1] = std::max(-limiterThreshold, std::min(limiterThreshold, r));
+        output[i * 2] = softLimit(l);
+        output[i * 2 + 1] = softLimit(r);
     }
 }
