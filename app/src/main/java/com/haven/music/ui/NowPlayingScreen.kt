@@ -259,7 +259,7 @@ fun PlayerContent(
         modifier = modifier
             .fillMaxSize()
             .statusBarsPadding()
-            .padding(bottom = 84.dp),
+            .padding(bottom = 68.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // 1. TOP BAR
@@ -282,7 +282,7 @@ fun PlayerContent(
             }
         }
 
-        Spacer(modifier = Modifier.weight(0.05f))
+        Spacer(modifier = Modifier.weight(0.15f))
 
         // 2. CONSOLE HUB
         Column(
@@ -504,7 +504,7 @@ fun PlayerContent(
             }
         }
 
-        Spacer(modifier = Modifier.weight(0.4f))
+        Spacer(modifier = Modifier.weight(0.05f))
         Spacer(modifier = Modifier.navigationBarsPadding())
     }
 }
